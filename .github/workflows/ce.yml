@@ -1,0 +1,69 @@
+name: Cheat Engine (Windows)
+
+on: [ push, pull_request ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [win64, win32]
+        include:
+          - os: win64
+            cpu: x86_64
+            arch: 64
+            lazarus_ver: 2.2.2
+            fpc_ver: 3.2.2
+          - os: win32
+            cpu: i386
+            arch: 32
+            lazarus_ver: 2.2.2
+            fpc_ver: 3.2.2
+    steps:
+    - name: Checkout
+      uses: actions/checkout@main
+    - name: Download lazarus
+      run: |
+        curl -fLJO "https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%20${{matrix.lazarus_ver}}/lazarus-${{matrix.lazarus_ver}}-fpc-${{matrix.fpc_ver}}-win64.exe/download"
+        curl -fLJO "https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%20${{matrix.lazarus_ver}}/lazarus-${{matrix.lazarus_ver}}-fpc-${{matrix.fpc_ver}}-cross-i386-win32-win64.exe/download"
+    - name: Setup lazarus
+      shell: cmd
+      run: |
+        lazarus-${{matrix.lazarus_ver}}-fpc-${{matrix.fpc_ver}}-win64.exe /verysilent
+        lazarus-${{matrix.lazarus_ver}}-fpc-${{matrix.fpc_ver}}-cross-i386-win32-win64.exe /verysilent
+        if ${{matrix.arch}}==64 (rd "Cheat Engine\xmplayer" /s /q)
+    - name: Build
+      shell: cmd
+      run: for /F "tokens=*" %%i in ('dir /A:-D /B /S "*.lpi"') do ("c:\lazarus\lazbuild" "%%i" -B --cpu=${{matrix.cpu}} --os=${{matrix.os}})
+    - name: Zip
+      working-directory: 'Cheat Engine'
+      run: |
+        Rename-Item bin CheatEngine-${{matrix.os}}
+        7z a -m0=LZMA2 -mx9 ${{ github.workspace }}\CheatEngine-${{matrix.os}}.7z CheatEngine-${{matrix.os}}
+    - name: Upload artifact (${{matrix.os}})
+      uses: actions/upload-artifact@main
+      with:
+        name: CheatEngine-${{matrix.os}}
+        path: CheatEngine-${{matrix.os}}.7z
+        retention-days: 1
+
+  push_release:
+    if: |
+      github.event_name == 'push' &&
+      github.repository == 'illusion0001/cheat-engine'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+      - name: Download artifacts
+        uses: actions/download-artifact@main
+        with:
+          path: download-artifact
+          merge-multiple: true
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create 1.0${{ GITHUB.RUN_NUMBER }} download-artifact/*.7z --target ${{ GITHUB.SHA }} -t 1.0${{ GITHUB.RUN_NUMBER }}
