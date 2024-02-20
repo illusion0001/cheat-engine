@@ -1518,6 +1518,8 @@ begin
 
 
           inc(fromAddress, DisplayTypeByteSize(fDisplayType));
+          if isediting then
+            selected:=selected+1;
         end;
       end;
     end;
